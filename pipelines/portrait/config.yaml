@@ -1,0 +1,46 @@
+# Portrait Pipeline
+# Head-only talking head — no scene, no compositing
+
+name: portrait
+version: "1.0"
+description: >
+  Minimal talking head pipeline. Face-only lipsync, no scene background.
+  Faster than avatar_studio — good for quick previews.
+
+steps:
+  - id: extract_face
+    module: core.steps.avatar_gen
+    fn: extract_best_face_frame
+
+  - id: generate_portrait
+    module: core.steps.avatar_gen
+    fn: generate_scene_avatar
+    params:
+      scene: portrait
+      aspect: "9:16"
+
+  - id: extract_voice
+    module: core.steps.voiceclone
+    fn: extract_voice_profile
+
+  - id: synthesize_speech
+    module: core.steps.voiceclone
+    fn: synthesize_with_cloned_voice
+
+  - id: lipsync
+    module: core.steps.sonic_lipsync
+    fn: run_sonic
+
+  - id: polish
+    module: core.steps.codeformer_polish
+    fn: polish_video
+    params:
+      fidelity: 0.7
+
+  - id: mux
+    description: Mux audio into final output
+
+environment:
+  venv: /home/ubuntu/venv-sonic
+  gpu: required
+  vram_gb: 16

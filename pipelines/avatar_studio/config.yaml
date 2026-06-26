@@ -1,0 +1,68 @@
+# Avatar Studio Pipeline
+# Face identity (PuLID) → Voice clone (Chatterbox) → Lipsync (Sonic) → Polish (CodeFormer)
+
+name: avatar_studio
+version: "1.0"
+description: >
+  Generates a talking avatar video from a consent video and a script.
+  Identity is preserved via PuLID SDXL. Voice is cloned via Chatterbox TTS.
+  Lipsync is driven by Sonic. Final polish via CodeFormer face restoration.
+
+steps:
+  - id: extract_face
+    module: core.steps.avatar_gen
+    fn: extract_best_face_frame
+    description: Pick sharpest, most frontal face frame from consent video
+
+  - id: generate_avatar
+    module: core.steps.avatar_gen
+    fn: generate_scene_avatar
+    description: PuLID SDXL portrait + RealVisXL img2img refinement
+    params:
+      scene: studio        # portrait | studio | cafe | outdoor | desk
+      aspect: "9:16"       # 9:16 | 1:1 | 16:9 | 4:5 | 4:3
+
+  - id: extract_voice
+    module: core.steps.voiceclone
+    fn: extract_voice_profile
+    description: Extract Chatterbox voice profile from consent video audio
+
+  - id: synthesize_speech
+    module: core.steps.voiceclone
+    fn: synthesize_with_cloned_voice
+    description: Generate speech WAV in cloned voice from script text
+    fallback:
+      module: core.steps.tts
+      fn: synthesize
+
+  - id: crop_for_lipsync
+    module: core.steps.avatar_gen
+    fn: crop_head_shoulders
+    description: Crop avatar to head+shoulders — excludes hands from Sonic input
+
+  - id: lipsync
+    module: core.steps.sonic_lipsync
+    fn: run_sonic
+    description: Sonic audio-driven lipsync on head+shoulders crop
+    params:
+      dynamic_scale: 1.0
+
+  - id: polish
+    module: core.steps.codeformer_polish
+    fn: polish_video
+    description: CodeFormer per-frame face restoration
+    params:
+      fidelity: 0.7
+
+  - id: composite
+    module: core.steps.face_composite
+    fn: composite_face_onto_reference
+    description: Back-project animated face into full scene using crop sidecar
+
+  - id: mux
+    description: Mux cloned audio into final output video
+
+environment:
+  venv: /home/ubuntu/venv-sonic
+  gpu: required
+  vram_gb: 20

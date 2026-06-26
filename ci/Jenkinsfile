@@ -59,7 +59,7 @@ pipeline {
             steps {
                 sh """
                     mkdir -p ${env.WORK_DIR}
-                    /home/ubuntu/venv-sonic/bin/python worker/test_seated_pipeline.py \
+                    /home/ubuntu/venv-sonic/bin/python pipelines/avatar_studio/run.py \
                         ${env.TEST_VIDEO} \
                         ${env.OUTPUT_VIDEO} \
                         ${env.WORK_DIR} \
