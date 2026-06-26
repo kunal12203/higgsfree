@@ -3,14 +3,10 @@ name: Wake EC2 for Jenkins
 on:
   pull_request_target:
     types: [labeled]
-  push:
-    branches: [main]
 
 jobs:
   wake-ec2:
-    if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'approved-for-ci')
+    if: github.event.label.name == 'approved-for-ci'
     runs-on: ubuntu-latest
     steps:
       - name: Start EC2 instance
