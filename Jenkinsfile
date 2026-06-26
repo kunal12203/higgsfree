@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    // Only build PRs that have the "approved-for-ci" label (set by maintainer)
+    options {
+        disableConcurrentBuilds()
+    }
+
     environment {
         GITHUB_TOKEN = credentials('github-token')
         TEST_VIDEO   = '/home/ubuntu/ci_test/sample.MOV'
@@ -10,6 +15,27 @@ pipeline {
     }
 
     stages {
+
+        stage('Check approval') {
+            steps {
+                script {
+                    if (env.CHANGE_ID) {
+                        def labels = sh(
+                            script: """
+                                curl -s -H "Authorization: token ${env.GITHUB_TOKEN}" \
+                                  "https://api.github.com/repos/kunal12203/higgsfree/issues/${env.CHANGE_ID}/labels" \
+                                  | grep -o '"approved-for-ci"' | head -1
+                            """,
+                            returnStdout: true
+                        ).trim()
+                        if (!labels) {
+                            error("PR does not have 'approved-for-ci' label — skipping CI. A maintainer must add the label to approve.")
+                        }
+                        echo "PR approved for CI — proceeding"
+                    }
+                }
+            }
+        }
 
         stage('Checkout') {
             steps {
