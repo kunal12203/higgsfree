@@ -162,18 +162,7 @@ higgsfree/
 | `sonic_lipsync` | Sonic audio-driven lipsync |
 | `codeformer_polish` | Per-frame face restoration |
 | `face_composite` | Feathered face compositing onto scene background |
-| `video_postproc` | FFmpeg post-processing filters |
-| `lipsync` | LatentSync alternative lipsync |
-| `hallo2` | Hallo2 audio-driven talking head |
-| `echomimic` | EchoMimic audio-driven portrait animation |
-| `animate` | General animation utilities |
-| `broll` | B-roll clip generation |
-| `compositor` | Multi-layer video compositing |
-| `mimicmotion` | MimicMotion body-pose-driven animation |
-| `pose_extract` | MediaPipe pose keypoint extraction |
-| `pose_extract_echomimic` | EchoMimic-specific pose extraction |
-| `video_sr` | Video super-resolution upscaling |
-| `replicate_fallback` | Cloud fallback for lipsync (no local GPU required) |
+| `replicate_fallback` | Cloud fallback for lipsync when no local GPU is available |
 
 ## 📊 Quality Scoring
 
