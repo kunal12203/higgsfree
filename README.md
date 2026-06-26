@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="higgsfree logo" width="160" height="160" />
+ <img src="assets/logo.png" alt="higgsfree logo" width="220" height="160" />
 
 # higgsfree
 
@@ -17,6 +17,26 @@ face identity preserved, voice cloned, and lips synced to generated speech.
 [Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Architecture](#-architecture) · [Contributing](#-contributing)
 
 </div>
+
+---
+
+## 🌍 Our Vision
+
+**We're building the open-source, end-to-end video production pipeline — for everyone.**
+
+Talking avatars are just the beginning. Our mission is to grow `higgsfree` into a **complete,
+production-grade video creation stack** that takes you from raw idea to finished film: identity and
+avatar generation, voice cloning, lipsync, B-roll, motion, scene compositing, restoration, and
+final post — all **free, modular, and community-owned**.
+
+The best creative tools shouldn't be locked behind closed APIs and paywalls. We believe
+**studio-grade video generation should be open** — auditable, self-hostable, and shaped by the
+people who use it. Every step is a reusable building block, every contribution makes the whole
+ecosystem stronger, and every quality gain is measured in the open.
+
+> **Build in the open. Create without limits. Own your pipeline.**
+
+If that excites you, [come build it with us](#-contributing).
 
 ---
 
