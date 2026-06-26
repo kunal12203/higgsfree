@@ -1,8 +1,6 @@
 name: Wake EC2 for Jenkins
 
 on:
-  # pull_request_target fires ONLY after a maintainer approves the PR
-  # for first-time contributors (repo setting: "Require approval for first-time contributors")
   pull_request_target:
     types: [labeled]
   push:
@@ -10,7 +8,6 @@ on:
 
 jobs:
   wake-ec2:
-    # Only run when a maintainer adds the "approved-for-ci" label
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'approved-for-ci')
@@ -30,7 +27,32 @@ jobs:
           echo "Instance state: $STATE"
           if [ "$STATE" = "stopped" ]; then
             aws ec2 start-instances --region $AWS_REGION --instance-ids $INSTANCE_ID
-            echo "Started EC2 — Jenkins will pick up the job"
+            echo "Waiting for instance to be running..."
+            aws ec2 wait instance-running --region $AWS_REGION --instance-ids $INSTANCE_ID
+            echo "EC2 is running"
           else
             echo "Instance already $STATE"
           fi
+
+      - name: Wait for Jenkins to be ready
+        run: |
+          echo "Waiting for Jenkins on port 8080..."
+          for i in $(seq 1 24); do
+            if curl -s --max-time 5 http://34.196.144.73:8080/login | grep -q "Jenkins"; then
+              echo "Jenkins is up"
+              break
+            fi
+            echo "Attempt $i/24 — not ready yet, waiting 10s..."
+            sleep 10
+          done
+
+      - name: Trigger Jenkins scan
+        env:
+          JENKINS_USER:  ${{ secrets.JENKINS_USER }}
+          JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
+        run: |
+          # Trigger a branch scan on the Multibranch Pipeline job
+          curl -s -X POST \
+            --user "$JENKINS_USER:$JENKINS_TOKEN" \
+            "http://34.196.144.73:8080/job/higgsfree/build" \
+            -w "\nHTTP status: %{http_code}\n"
