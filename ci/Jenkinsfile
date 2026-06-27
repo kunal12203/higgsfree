@@ -1,45 +1,82 @@
+// CI pipeline for higgsfree.
+//
+// Triggered by .github/workflows/wake-ec2.yml once a maintainer adds the
+// "approved-for-ci" label: the Action wakes the GPU box and POSTs to
+// /job/higgsfree/buildWithParameters with the PR number + head SHA.
+//
+// This job posts a GitHub *commit status* ("ci/pipeline-score") on the PR head
+// SHA — that is the context required by branch protection on `main`, so the PR
+// cannot be merged until the pipeline runs and the quality gate passes.
+
+// Post a commit status to the PR head SHA (no-op for main/baseline builds).
+def postStatus(String state, String desc) {
+    if (!params.PR_SHA?.trim()) { return }
+    sh """
+        curl -s -X POST \
+          -H "Authorization: token ${env.GITHUB_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d '{"state":"${state}","context":"ci/pipeline-score","description":"${desc}","target_url":"${env.BUILD_URL}"}' \
+          "https://api.github.com/repos/kunal12203/higgsfree/statuses/${params.PR_SHA}" >/dev/null
+    """
+}
+
 pipeline {
     agent any
 
-    // Only build PRs that have the "approved-for-ci" label (set by maintainer)
     options {
         disableConcurrentBuilds()
     }
 
+    parameters {
+        string(name: 'PR_NUMBER', defaultValue: '', description: 'PR number (empty = main baseline build)')
+        string(name: 'PR_SHA',    defaultValue: '', description: 'PR head commit SHA (used for the commit status)')
+        string(name: 'PR_REF',    defaultValue: 'main', description: 'Branch to build when PR_NUMBER is empty')
+    }
+
     environment {
         GITHUB_TOKEN = credentials('github-token')
-        TEST_VIDEO   = '/home/ubuntu/ci_test/sample.MOV'
+        // Single source of truth for the CI test clip. Lives in a PRIVATE bucket
+        // (avatar-graperoot-ci) that is NOT fronted by CloudFront, so it is not
+        // publicly reachable — readable only via the worker instance role
+        // (ci-sample-read inline policy). Fetched per run; never a manual file.
+        SAMPLE_S3    = 's3://avatar-graperoot-ci/ci/sample.MOV'
+        // PuLID + img2img run in their own venv (diffusers 0.25.0) so they don't
+        // clash with Sonic's diffusers 0.29.0 in venv-sonic. avatar_gen defaults
+        // this to venv-sonic, so it MUST be overridden here for CI.
+        PULID_VENV_PYTHON = '/home/ubuntu/venv-pulid/bin/python'
         WORK_DIR     = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}"
+        TEST_VIDEO   = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}/sample.MOV"
         OUTPUT_VIDEO = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}/output.mp4"
         TEST_TEXT    = 'Hey! This is a quick test of the video generation pipeline.'
     }
 
     stages {
 
-        stage('Check approval') {
+        stage('Pending status') {
             steps {
-                script {
-                    if (env.CHANGE_ID) {
-                        def labels = sh(
-                            script: """
-                                curl -s -H "Authorization: token ${env.GITHUB_TOKEN}" \
-                                  "https://api.github.com/repos/kunal12203/higgsfree/issues/${env.CHANGE_ID}/labels" \
-                                  | grep -o '"approved-for-ci"' | head -1
-                            """,
-                            returnStdout: true
-                        ).trim()
-                        if (!labels) {
-                            error("PR does not have 'approved-for-ci' label — skipping CI. A maintainer must add the label to approve.")
-                        }
-                        echo "PR approved for CI — proceeding"
-                    }
-                }
+                script { postStatus('pending', 'Pipeline running on the GPU box') }
             }
         }
 
         stage('Checkout') {
             steps {
-                checkout scm
+                script {
+                    if (params.PR_NUMBER?.trim()) {
+                        // Build the PR head commit exactly (what GitHub gates on).
+                        checkout([$class: 'GitSCM',
+                            branches: [[name: "${params.PR_SHA?.trim() ? params.PR_SHA : 'FETCH_HEAD'}"]],
+                            userRemoteConfigs: [[
+                                url: 'https://github.com/kunal12203/higgsfree.git',
+                                refspec: "+refs/pull/${params.PR_NUMBER}/head:refs/remotes/origin/pr/${params.PR_NUMBER}"
+                            ]]
+                        ])
+                    } else {
+                        checkout([$class: 'GitSCM',
+                            branches: [[name: "*/${params.PR_REF}"]],
+                            userRemoteConfigs: [[url: 'https://github.com/kunal12203/higgsfree.git']]
+                        ])
+                    }
+                }
             }
         }
 
@@ -52,6 +89,16 @@ pipeline {
                     ).trim()
                     echo "Baseline score: ${env.BASELINE}"
                 }
+            }
+        }
+
+        stage('Fetch test sample') {
+            steps {
+                sh """
+                    mkdir -p ${env.WORK_DIR}
+                    aws s3 cp ${env.SAMPLE_S3} ${env.TEST_VIDEO}
+                    test -f ${env.TEST_VIDEO}
+                """
             }
         }
 
@@ -76,7 +123,7 @@ pipeline {
                         script: """
                             /home/ubuntu/venv-sonic/bin/python eval/score_pipeline.py \
                                 ${env.TEST_VIDEO} \
-                                ${env.OUTPUT_VIDEO}
+                                ${env.OUTPUT_VIDEO} | tail -1
                         """,
                         returnStdout: true
                     ).trim()
@@ -87,7 +134,7 @@ pipeline {
 
         stage('Post PR comment') {
             when {
-                expression { env.CHANGE_ID != null }
+                expression { params.PR_NUMBER?.trim() }
             }
             steps {
                 script {
@@ -110,22 +157,39 @@ pipeline {
 
 **Score breakdown:** face identity similarity (50%) + lip sync confidence (50%)
 
-_Tested on g5.2xlarge (A10G 24GB) · Build #${env.BUILD_NUMBER}_"""
+_Tested on the L40S CI box · Build #${env.BUILD_NUMBER}_"""
 
                     sh """
                         curl -s -X POST \
                           -H "Authorization: token ${env.GITHUB_TOKEN}" \
                           -H "Content-Type: application/json" \
                           -d '{"body": ${groovy.json.JsonOutput.toJson(body)}}' \
-                          "https://api.github.com/repos/kunal12203/higgsfree/issues/${env.CHANGE_ID}/comments"
+                          "https://api.github.com/repos/kunal12203/higgsfree/issues/${params.PR_NUMBER}/comments" >/dev/null
                     """
+                }
+            }
+        }
+
+        stage('Quality gate') {
+            when {
+                expression { params.PR_NUMBER?.trim() }
+            }
+            steps {
+                script {
+                    def baseline = (env.BASELINE ?: '0.0').toFloat()
+                    def score    = env.SCORE.toFloat()
+                    // Allow a tiny epsilon so floating-point noise doesn't flap the gate.
+                    if (score + 0.0005 < baseline) {
+                        error("Quality regression: score ${score} < baseline ${baseline}")
+                    }
+                    echo "Quality gate passed: ${score} >= ${baseline}"
                 }
             }
         }
 
         stage('Update baseline') {
             when {
-                branch 'main'
+                expression { !params.PR_NUMBER?.trim() }
             }
             steps {
                 sh "echo ${env.SCORE} > /home/ubuntu/ci_test/baseline_score.txt"
@@ -135,8 +199,8 @@ _Tested on g5.2xlarge (A10G 24GB) · Build #${env.BUILD_NUMBER}_"""
     }
 
     post {
-        always {
-            sh "rm -rf ${env.WORK_DIR} || true"
-        }
+        success { script { postStatus('success', "score ${env.SCORE}") } }
+        failure { script { postStatus('failure', 'pipeline failed or quality regressed') } }
+        always  { sh "rm -rf ${env.WORK_DIR} || true" }
     }
 }

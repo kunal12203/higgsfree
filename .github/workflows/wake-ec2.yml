@@ -1,28 +1,29 @@
-name: Wake EC2 for Jenkins
+name: Wake EC2 + trigger CI
 
 on:
-  # pull_request_target fires ONLY after a maintainer approves the PR
-  # for first-time contributors (repo setting: "Require approval for first-time contributors")
+  # pull_request_target fires only when a maintainer adds the label (below).
+  # Using the label as the gate means CI never runs for unapproved/first-time
+  # contributors, and the required "ci/pipeline-score" status is simply never
+  # posted until then — so the PR stays unmergeable until a maintainer approves.
   pull_request_target:
     types: [labeled]
   push:
     branches: [main]
 
 jobs:
-  wake-ec2:
-    # Only run when a maintainer adds the "approved-for-ci" label
+  wake-and-build:
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'approved-for-ci')
     runs-on: ubuntu-latest
     steps:
-      - name: Start EC2 instance
+      - name: Start EC2 and discover its public IP
+        id: ec2
         env:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:            us-east-1
-          # L40S CI box (avatar-graperoot-l40s, g6e.8xlarge). Was the g5 worker
-          # (i-02460972dbc8e315e); CI now runs on the L40S.
+          # L40S CI box (avatar-graperoot-l40s, g6e.8xlarge).
           INSTANCE_ID:           i-0a7c6c7bb9dee006b
         run: |
           pip install awscli -q
@@ -32,7 +33,42 @@ jobs:
           echo "Instance state: $STATE"
           if [ "$STATE" = "stopped" ]; then
             aws ec2 start-instances --region $AWS_REGION --instance-ids $INSTANCE_ID
-            echo "Started EC2 — Jenkins will pick up the job"
+          fi
+          aws ec2 wait instance-running --region $AWS_REGION --instance-ids $INSTANCE_ID
+          # Public IP is ephemeral across stop/start, so resolve it every run.
+          IP=$(aws ec2 describe-instances --region $AWS_REGION \
+            --instance-ids $INSTANCE_ID \
+            --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          echo "Public IP: $IP"
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Jenkins to be reachable
+        run: |
+          IP="${{ steps.ec2.outputs.ip }}"
+          echo "Waiting for Jenkins on http://$IP:8080 ..."
+          for i in $(seq 1 40); do
+            if curl -s --max-time 5 "http://$IP:8080/login" | grep -q "Jenkins"; then
+              echo "Jenkins is up"; exit 0
+            fi
+            sleep 15
+          done
+          echo "Jenkins did not come up in time"; exit 1
+
+      - name: Trigger Jenkins pipeline
+        env:
+          JENKINS_USER:  ${{ secrets.JENKINS_USER }}
+          JENKINS_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
+        run: |
+          IP="${{ steps.ec2.outputs.ip }}"
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            curl -fsS -X POST "http://$IP:8080/job/higgsfree/buildWithParameters" \
+              --user "$JENKINS_USER:$JENKINS_TOKEN" \
+              --data-urlencode "PR_NUMBER=${{ github.event.number }}" \
+              --data-urlencode "PR_SHA=${{ github.event.pull_request.head.sha }}" \
+              -w "\nTriggered CI for PR #${{ github.event.number }} (HTTP %{http_code})\n"
           else
-            echo "Instance already $STATE"
+            curl -fsS -X POST "http://$IP:8080/job/higgsfree/buildWithParameters" \
+              --user "$JENKINS_USER:$JENKINS_TOKEN" \
+              --data-urlencode "PR_REF=main" \
+              -w "\nTriggered baseline build on main (HTTP %{http_code})\n"
           fi
