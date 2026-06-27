@@ -24,3 +24,6 @@ venv/
 
 # OS
 .DS_Store
+
+# local notes (personal architecture deep-dive — not for the repo)
+PROJECT_SUMMARY.md
