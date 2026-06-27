@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCloudFrontOAC",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudfront.amazonaws.com" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::avatar-graperoot-assets/*",
+      "Condition": { "StringEquals": { "AWS:SourceArn": "arn:aws:cloudfront::342344627608:distribution/E3EF94Q0FLT4JS" } }
+    },
+    {
+      "Sid": "DenyConsentPiiViaCDN",
+      "Effect": "Deny",
+      "Principal": { "Service": "cloudfront.amazonaws.com" },
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::avatar-graperoot-assets/consent-videos/*",
+        "arn:aws:s3:::avatar-graperoot-assets/avatars/*/consent-*",
+        "arn:aws:s3:::avatar-graperoot-assets/avatars/*/voice_profile/*",
+        "arn:aws:s3:::avatar-graperoot-assets/avatars/*/face.jpg"
+      ]
+    }
+  ]
+}

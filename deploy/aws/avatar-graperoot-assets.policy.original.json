@@ -1,0 +1,1 @@
+{"Version":"2012-10-17","Statement":[{"Sid":"AllowCloudFrontOAC","Effect":"Allow","Principal":{"Service":"cloudfront.amazonaws.com"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::avatar-graperoot-assets/*","Condition":{"StringEquals":{"AWS:SourceArn":"arn:aws:cloudfront::342344627608:distribution/E3EF94Q0FLT4JS"}}}]}
