@@ -21,7 +21,9 @@ jobs:
           AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION:            us-east-1
-          INSTANCE_ID:           i-02460972dbc8e315e
+          # L40S CI box (avatar-graperoot-l40s, g6e.8xlarge). Was the g5 worker
+          # (i-02460972dbc8e315e); CI now runs on the L40S.
+          INSTANCE_ID:           i-0a7c6c7bb9dee006b
         run: |
           pip install awscli -q
           STATE=$(aws ec2 describe-instances --region $AWS_REGION \
