@@ -8,10 +8,11 @@ pipeline {
 
     environment {
         GITHUB_TOKEN = credentials('github-token')
-        // Single source of truth for the CI test clip. Fetched from S3 each run
-        // (see "Fetch test sample" stage) so CI never depends on a manually
-        // placed file. Override here to swap the reference clip.
-        SAMPLE_S3    = 's3://avatar-graperoot-assets/consent-videos/test-manual/IMG_5498.MOV'
+        // Single source of truth for the CI test clip. Lives in a PRIVATE bucket
+        // (avatar-graperoot-ci) that is NOT fronted by CloudFront, so it is not
+        // publicly reachable — readable only via the worker instance role
+        // (ci-sample-read inline policy). Fetched per run; never a manual file.
+        SAMPLE_S3    = 's3://avatar-graperoot-ci/ci/sample.MOV'
         WORK_DIR     = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}"
         TEST_VIDEO   = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}/sample.MOV"
         OUTPUT_VIDEO = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}/output.mp4"

@@ -100,10 +100,10 @@ wget -q -O "$KOKORO_DIR/voices.bin" \
     https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.bin
 
 echo "===== 7b. Seed the CI test sample (Jenkins expects this exact path) ====="
-# The Jenkinsfile uses /home/ubuntu/ci_test/sample.MOV as BOTH the pipeline
-# input and the identity ground-truth for scoring. It is box-local (gitignored),
-# so seed it from S3. Override CI_SAMPLE_S3 to use a different clip.
-CI_SAMPLE_S3="${CI_SAMPLE_S3:-s3://avatar-graperoot-assets/consent-videos/test-manual/IMG_5498.MOV}"
+# The smoke test uses /home/ubuntu/ci_test/sample.MOV as the pipeline input.
+# Seed it from the PRIVATE CI bucket (not CloudFront-fronted, IAM-only access).
+# Override CI_SAMPLE_S3 to use a different clip.
+CI_SAMPLE_S3="${CI_SAMPLE_S3:-s3://avatar-graperoot-ci/ci/sample.MOV}"
 mkdir -p /home/ubuntu/ci_test
 if [ ! -f /home/ubuntu/ci_test/sample.MOV ]; then
   aws s3 cp "$CI_SAMPLE_S3" /home/ubuntu/ci_test/sample.MOV \
