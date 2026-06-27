@@ -13,6 +13,10 @@ pipeline {
         // publicly reachable — readable only via the worker instance role
         // (ci-sample-read inline policy). Fetched per run; never a manual file.
         SAMPLE_S3    = 's3://avatar-graperoot-ci/ci/sample.MOV'
+        // PuLID + img2img run in their own venv (diffusers 0.25.0) so they don't
+        // clash with Sonic's diffusers 0.29.0 in venv-sonic. avatar_gen defaults
+        // this to venv-sonic, so it MUST be overridden here for CI.
+        PULID_VENV_PYTHON = '/home/ubuntu/venv-pulid/bin/python'
         WORK_DIR     = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}"
         TEST_VIDEO   = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}/sample.MOV"
         OUTPUT_VIDEO = "/home/ubuntu/ci_test/run_${env.BUILD_NUMBER}/output.mp4"

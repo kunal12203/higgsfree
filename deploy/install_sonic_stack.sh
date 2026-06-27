@@ -19,6 +19,7 @@
 set -euo pipefail
 
 VENV_SONIC=/home/ubuntu/venv-sonic
+VENV_PULID=/home/ubuntu/venv-pulid
 VENV_CHATTERBOX=/home/ubuntu/venv-chatterbox
 SONIC_DIR=/home/ubuntu/Sonic
 PULID_DIR=/home/ubuntu/PuLID
@@ -52,6 +53,9 @@ if [ ! -d "$SONIC_DIR" ]; then
 fi
 cd "$SONIC_DIR"
 [ -f requirements.txt ] && "$VENV_SONIC/bin/pip" install -r requirements.txt || true
+# Sonic uses diffusers 0.29.0; peft (pulled in by diffusers) needs hub>=0.25, and
+# torch needs numpy<2. Pin both so Sonic inference doesn't break on import.
+"$VENV_SONIC/bin/pip" install "huggingface_hub==0.25.2" "numpy<2"
 # Sonic checkpoints (Sonic weights + SVD-XT base + whisper). Repo layout expects
 # them under $SONIC_DIR/checkpoints. Confirm repo IDs against the Sonic README.
 "$PY" - <<PYEOF
@@ -66,12 +70,25 @@ snapshot_download(repo_id="stabilityai/stable-video-diffusion-img2vid-xt",
                   local_dir=os.path.join(dst, "stable-video-diffusion-img2vid-xt"))
 PYEOF
 
-echo "===== 4. PuLID (identity-preserving portrait) ====="
+echo "===== 4. PuLID (identity-preserving portrait) — ISOLATED venv ====="
+# PuLID pins diffusers==0.25.0, which clashes with Sonic's diffusers==0.29.0.
+# So PuLID — and the img2img refine step, which also runs via PULID_VENV_PYTHON —
+# get their own venv. The pipeline/CI must set:
+#   export PULID_VENV_PYTHON=$VENV_PULID/bin/python
 if [ ! -d "$PULID_DIR" ]; then
   git clone https://github.com/ToTheBeginning/PuLID.git "$PULID_DIR"
 fi
-cd "$PULID_DIR"
-[ -f requirements.txt ] && "$VENV_SONIC/bin/pip" install -r requirements.txt || true
+python3.10 -m venv "$VENV_PULID"
+"$VENV_PULID/bin/pip" install --upgrade pip wheel
+"$VENV_PULID/bin/pip" install torch==2.2.1 torchvision==0.17.1 --index-url https://download.pytorch.org/whl/cu118
+# PuLID reqs minus torch (pinned above) and gradio (demo-only, heavy)
+grep -viE '^(torch|torchvision|torchaudio|gradio)' "$PULID_DIR/requirements.txt" > /tmp/pulid_reqs.txt
+"$VENV_PULID/bin/pip" install -r /tmp/pulid_reqs.txt
+# Pins discovered during bring-up (without these the pipeline crashes):
+#   torchsde                — imported by pulid.utils, missing from requirements.txt
+#   numpy==1.26.4           — torch 2.2.1 needs numpy<2 ("Numpy is not available")
+#   huggingface_hub==0.25.2 — diffusers 0.25.0 imports cached_download (gone in hub 0.26+)
+"$VENV_PULID/bin/pip" install torchsde "numpy==1.26.4" "huggingface_hub==0.25.2"
 # PuLID downloads its ID-encoder + SDXL-Lightning weights on first load_pretrain().
 
 echo "===== 5. CodeFormer (per-frame face restoration) ====="
